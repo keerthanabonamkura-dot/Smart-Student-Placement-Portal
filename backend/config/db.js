@@ -1,49 +1,39 @@
+
 const mysql = require("mysql2/promise");
 
 let pool;
 
 const getPool = () => {
   if (!pool) {
+    const required = ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"];
+
+    for (const key of required) {
+      if (process.env[key] === undefined || process.env[key] === "") {
+        throw new Error(`Missing required environment variable: ${key}`);
+      }
+    }
+
     pool = mysql.createPool({
-      host: process.env.DB_HOST || "127.0.0.1",
-      user: process.env.DB_USER || "root",
-      password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : "root",
-      database: process.env.DB_NAME || "placement_portal",
-      port: Number(process.env.DB_PORT) || 3306,
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT || 3306),
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      ssl: { rejectUnauthorized: true },
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
       multipleStatements: true,
     });
   }
+
   return pool;
 };
 
-// Initialize Database & Tables
 const initDatabase = async () => {
+  const connection = await getPool().getConnection();
+
   try {
-    const dbHost = process.env.DB_HOST || "127.0.0.1";
-    const dbUser = process.env.DB_USER || "root";
-    const dbPassword = process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : "root";
-    const dbPort = Number(process.env.DB_PORT) || 3306;
-    const dbName = process.env.DB_NAME || "placement_portal";
-
-    // 1. First ensure the database itself exists
-    const initConnection = await mysql.createConnection({
-      host: dbHost,
-      user: dbUser,
-      password: dbPassword,
-      port: dbPort,
-    });
-
-    await initConnection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
-    await initConnection.end();
-
-    // 2. Connect through pool
-    const currentPool = getPool();
-    const connection = await currentPool.getConnection();
-
-    // 3. Create tables with exact constraints
     await connection.query(`
       CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -60,20 +50,27 @@ const initDatabase = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // In case table was created with 'password' instead of 'password_hash'
-    try {
-      const [colRows] = await connection.query(`SHOW COLUMNS FROM users LIKE 'password';`);
-      if (colRows.length > 0) {
-        await connection.query(`ALTER TABLE users CHANGE COLUMN \`password\` \`password_hash\` VARCHAR(255) NOT NULL;`);
-      }
-    } catch (ignore) {}
+    const [passwordColumns] = await connection.query(
+      "SHOW COLUMNS FROM users LIKE 'password'"
+    );
 
-    try {
-      const [statusCol] = await connection.query(`SHOW COLUMNS FROM users LIKE 'account_status';`);
-      if (statusCol.length === 0) {
-        await connection.query(`ALTER TABLE users ADD COLUMN account_status ENUM('active', 'inactive') NOT NULL DEFAULT 'active';`);
-      }
-    } catch (ignore) {}
+    if (passwordColumns.length > 0) {
+      await connection.query(
+        "ALTER TABLE users CHANGE COLUMN `password` `password_hash` VARCHAR(255) NOT NULL"
+      );
+    }
+
+    const [statusColumns] = await connection.query(
+      "SHOW COLUMNS FROM users LIKE 'account_status'"
+    );
+
+    if (statusColumns.length === 0) {
+      await connection.query(`
+        ALTER TABLE users
+        ADD COLUMN account_status ENUM('active', 'inactive')
+        NOT NULL DEFAULT 'active'
+      `);
+    }
 
     await connection.query(`
       CREATE TABLE IF NOT EXISTS jobs (
@@ -101,7 +98,8 @@ const initDatabase = async () => {
         INDEX idx_jobs_recruiter (recruiter_id),
         INDEX idx_jobs_status (job_status),
         INDEX idx_jobs_title (title),
-        CONSTRAINT fk_jobs_recruiter FOREIGN KEY (recruiter_id) REFERENCES users(id) ON DELETE SET NULL
+        CONSTRAINT fk_jobs_recruiter
+          FOREIGN KEY (recruiter_id) REFERENCES users(id) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -110,7 +108,8 @@ const initDatabase = async () => {
         id INT AUTO_INCREMENT PRIMARY KEY,
         student_id INT NOT NULL,
         job_id INT NOT NULL,
-        status ENUM('Under Review', 'Shortlisted', 'Interview', 'Rejected', 'Accepted') NOT NULL DEFAULT 'Under Review',
+        status ENUM('Under Review', 'Shortlisted', 'Interview', 'Rejected', 'Accepted')
+          NOT NULL DEFAULT 'Under Review',
         applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         resume VARCHAR(255) DEFAULT '',
@@ -119,8 +118,10 @@ const initDatabase = async () => {
         INDEX idx_app_student (student_id),
         INDEX idx_app_job (job_id),
         INDEX idx_app_status (status),
-        CONSTRAINT fk_app_student FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT fk_app_job FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+        CONSTRAINT fk_app_student
+          FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_app_job
+          FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -146,7 +147,8 @@ const initDatabase = async () => {
         profile_score INT DEFAULT 70,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        CONSTRAINT fk_student_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        CONSTRAINT fk_student_user
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -164,16 +166,19 @@ const initDatabase = async () => {
         logo VARCHAR(50) DEFAULT 'SP',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        CONSTRAINT fk_company_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        CONSTRAINT fk_company_user
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    connection.release();
-    console.log(`[MySQL] Successfully connected & verified database schema on '${dbName}'`);
-    return true;
+    console.log(
+      `[MySQL] Successfully connected and verified schema on '${process.env.DB_NAME}'`
+    );
   } catch (error) {
     console.error("[MySQL] Connection / Schema initialization error:", error.message);
     throw error;
+  } finally {
+    connection.release();
   }
 };
 
