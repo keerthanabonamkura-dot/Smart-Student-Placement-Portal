@@ -1,0 +1,3 @@
+-- Please refer to backend/database.sql for the complete SQL schema and seeds.
+-- Run using: mysql -u root -p < backend/database.sql
+-- Or inside MySQL CLI: source backend/database.sql;

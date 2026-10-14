@@ -1,0 +1,295 @@
+{
+  "info": {
+    "name": "Smart Student Placement Portal API",
+    "description": "Comprehensive Postman collection for Smart Student Placement Portal backend APIs (Auth, Jobs, Applications, Admin, Students).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "studentToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "recruiterToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Login - Student",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"aarav.kumar@gmail.com\",\n  \"password\": \"password123\",\n  \"role\": \"Student\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+          }
+        },
+        {
+          "name": "Login - Recruiter",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"recruiter@tcs.com\",\n  \"password\": \"password123\",\n  \"role\": \"Recruiter\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+          }
+        },
+        {
+          "name": "Login - Admin",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@smartplacement.com\",\n  \"password\": \"password123\",\n  \"role\": \"Admin\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+          }
+        },
+        {
+          "name": "Register - New Student",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Student Demo\",\n  \"email\": \"student_demo@gmail.com\",\n  \"password\": \"password123\",\n  \"role\": \"Student\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] }
+          }
+        },
+        {
+          "name": "Register - New Recruiter",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Google HR\",\n  \"email\": \"hr@google.com\",\n  \"password\": \"password123\",\n  \"role\": \"Recruiter\",\n  \"companyName\": \"Google\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] }
+          }
+        },
+        {
+          "name": "Get Current User Profile (Me)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/auth/logout", "host": ["{{baseUrl}}"], "path": ["api", "auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Jobs",
+      "item": [
+        {
+          "name": "Get All Jobs (Public)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/jobs?keyword=&location=", "host": ["{{baseUrl}}"], "path": ["api", "jobs"], "query": [{"key": "keyword", "value": ""}, {"key": "location", "value": ""}] }
+          }
+        },
+        {
+          "name": "Get Single Job By ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/jobs/1", "host": ["{{baseUrl}}"], "path": ["api", "jobs", "1"] }
+          }
+        },
+        {
+          "name": "Create Job (Recruiter / Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{recruiterToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Backend Node.js Developer\",\n  \"company\": \"Tata Consultancy Services\",\n  \"location\": \"Hyderabad / Remote\",\n  \"jobType\": \"Full Time\",\n  \"salary\": \"₹7 - ₹10 LPA\",\n  \"experience\": \"0-1 Years\",\n  \"skills\": [\"Node.js\", \"Express\", \"MySQL\", \"REST APIs\"],\n  \"description\": \"Looking for skilled backend developers to build scalable REST services using Node and MySQL.\",\n  \"deadline\": \"2026-11-30\",\n  \"category\": \"Software Development\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/jobs", "host": ["{{baseUrl}}"], "path": ["api", "jobs"] }
+          }
+        },
+        {
+          "name": "Update Job (Owner Recruiter / Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{recruiterToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"salary\": \"₹8 - ₹11 LPA\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/jobs/1", "host": ["{{baseUrl}}"], "path": ["api", "jobs", "1"] }
+          }
+        },
+        {
+          "name": "Delete Job (Owner Recruiter / Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{recruiterToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/jobs/1", "host": ["{{baseUrl}}"], "path": ["api", "jobs", "1"] }
+          }
+        },
+        {
+          "name": "Get Recruiter's Own Jobs",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{recruiterToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/jobs/recruiter/my-jobs", "host": ["{{baseUrl}}"], "path": ["api", "jobs", "recruiter", "my-jobs"] }
+          }
+        },
+        {
+          "name": "Get Job Applicants",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{recruiterToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/jobs/1/applications", "host": ["{{baseUrl}}"], "path": ["api", "jobs", "1", "applications"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Applications",
+      "item": [
+        {
+          "name": "Apply for Job (Student)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{studentToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": 1,\n  \"notes\": \"Strong match for Java and React full-stack stack.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/applications", "host": ["{{baseUrl}}"], "path": ["api", "applications"] }
+          }
+        },
+        {
+          "name": "Get My Applications (Student)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/applications/my", "host": ["{{baseUrl}}"], "path": ["api", "applications", "my"] }
+          }
+        },
+        {
+          "name": "Get Application Stats (Student)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/applications/stats", "host": ["{{baseUrl}}"], "path": ["api", "applications", "stats"] }
+          }
+        },
+        {
+          "name": "Update Application Status (Recruiter / Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{recruiterToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Interview\",\n  \"notes\": \"Technical round scheduled for next Monday.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/applications/1/status", "host": ["{{baseUrl}}"], "path": ["api", "applications", "1", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Admin Management",
+      "item": [
+        {
+          "name": "Admin Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/stats", "host": ["{{baseUrl}}"], "path": ["api", "admin", "stats"] }
+          }
+        },
+        {
+          "name": "Get All Users (Students, Recruiters, Admins)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/users", "host": ["{{baseUrl}}"], "path": ["api", "admin", "users"] }
+          }
+        },
+        {
+          "name": "Manage User Status (Activate / Deactivate)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/admin/users/3/status", "host": ["{{baseUrl}}"], "path": ["api", "admin", "users", "3", "status"] }
+          }
+        },
+        {
+          "name": "Get All Jobs (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/jobs", "host": ["{{baseUrl}}"], "path": ["api", "admin", "jobs"] }
+          }
+        },
+        {
+          "name": "Get All Applications (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/applications", "host": ["{{baseUrl}}"], "path": ["api", "admin", "applications"] }
+          }
+        },
+        {
+          "name": "Get All Companies (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/companies", "host": ["{{baseUrl}}"], "path": ["api", "admin", "companies"] }
+          }
+        }
+      ]
+    }
+  ]
+}
