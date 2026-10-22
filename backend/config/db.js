@@ -3,28 +3,64 @@ const mysql = require("mysql2/promise");
 
 let pool;
 
-const getPool = () => {
-  if (!pool) {
-    const required = ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"];
+const getDatabaseConfig = () => {
+  const connectionUri =
+    process.env.DATABASE_URL || process.env.MYSQL_URL;
 
-    for (const key of required) {
-      if (process.env[key] === undefined || process.env[key] === "") {
-        throw new Error(`Missing required environment variable: ${key}`);
-      }
-    }
+  const isSslEnabled =
+    process.env.DB_SSL === "true" ||
+    Boolean(connectionUri) ||
+    process.env.NODE_ENV === "production";
 
-    pool = mysql.createPool({
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT || 3306),
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      ssl: { rejectUnauthorized: true },
+  const sslConfig =
+    process.env.DB_SSL === "false"
+      ? undefined
+      : isSslEnabled
+        ? { rejectUnauthorized: false }
+        : undefined;
+
+  // Cloud database connection using Aiven connection URI
+  if (connectionUri) {
+    const parsed = new URL(connectionUri);
+
+    return {
+      host: parsed.hostname,
+      port: Number(parsed.port) || 3306,
+      user: decodeURIComponent(parsed.username || "root"),
+      password: decodeURIComponent(parsed.password || ""),
+      database: parsed.pathname
+        ? decodeURIComponent(parsed.pathname.replace(/^\//, ""))
+        : "defaultdb",
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
       multipleStatements: true,
-    });
+      ssl: sslConfig,
+    };
+  }
+
+  // Local MySQL or cloud database using individual environment variables
+  return {
+    host: process.env.DB_HOST || "127.0.0.1",
+    port: Number(process.env.DB_PORT) || 3306,
+    user: process.env.DB_USER || "root",
+    password:
+      process.env.DB_PASSWORD !== undefined
+        ? process.env.DB_PASSWORD
+        : "root",
+    database: process.env.DB_NAME || "placement_portal",
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    multipleStatements: true,
+    ssl: sslConfig,
+  };
+};
+
+const getPool = () => {
+  if (!pool) {
+    const config = getDatabaseConfig();
+    pool = mysql.createPool(config);
   }
 
   return pool;
@@ -34,20 +70,51 @@ const initDatabase = async () => {
   const connection = await getPool().getConnection();
 
   try {
+    // Create the database automatically only for local MySQL.
+    // Cloud databases such as Aiven must already have a database.
+    const config = getDatabaseConfig();
+    const isLocalHost =
+      config.host === "127.0.0.1" ||
+      config.host === "localhost";
+
+    if (isLocalHost && !process.env.DATABASE_URL &&
+        !process.env.MYSQL_URL) {
+      const initConnection = await mysql.createConnection({
+        host: config.host,
+        port: config.port,
+        user: config.user,
+        password: config.password,
+      });
+
+      try {
+        await initConnection.query(
+          `CREATE DATABASE IF NOT EXISTS \`${config.database}\`
+           CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+        );
+      } finally {
+        await initConnection.end();
+      }
+    }
+
+    // Users table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         email VARCHAR(255) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
-        role ENUM('Admin', 'Student', 'Recruiter') NOT NULL DEFAULT 'Student',
-        account_status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
+        role ENUM('Admin', 'Student', 'Recruiter')
+          NOT NULL DEFAULT 'Student',
+        account_status ENUM('active', 'inactive')
+          NOT NULL DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_users_email (email),
         INDEX idx_users_role (role),
         INDEX idx_users_status (account_status)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        COLLATE=utf8mb4_unicode_ci
     `);
 
     const [passwordColumns] = await connection.query(
@@ -67,11 +134,12 @@ const initDatabase = async () => {
     if (statusColumns.length === 0) {
       await connection.query(`
         ALTER TABLE users
-        ADD COLUMN account_status ENUM('active', 'inactive')
-        NOT NULL DEFAULT 'active'
+        ADD COLUMN account_status
+        ENUM('active', 'inactive') NOT NULL DEFAULT 'active'
       `);
     }
 
+    // Jobs table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS jobs (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -82,9 +150,11 @@ const initDatabase = async () => {
         required_skills JSON NOT NULL,
         eligibility VARCHAR(255) DEFAULT 'Fresher',
         location VARCHAR(255) NOT NULL,
-        job_status ENUM('Active', 'Closed', 'Draft') NOT NULL DEFAULT 'Active',
+        job_status ENUM('Active', 'Closed', 'Draft')
+          NOT NULL DEFAULT 'Active',
         application_deadline VARCHAR(100) NOT NULL,
-        job_type ENUM('Full Time', 'Part Time', 'Internship', 'Remote') NOT NULL DEFAULT 'Full Time',
+        job_type ENUM('Full Time', 'Part Time', 'Internship', 'Remote')
+          NOT NULL DEFAULT 'Full Time',
         salary VARCHAR(255) NOT NULL DEFAULT 'Competitive',
         experience VARCHAR(100) DEFAULT 'Fresher',
         category VARCHAR(255) DEFAULT 'Software Development',
@@ -94,24 +164,31 @@ const initDatabase = async () => {
         color VARCHAR(50) DEFAULT 'blue',
         applicants_count INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_jobs_recruiter (recruiter_id),
         INDEX idx_jobs_status (job_status),
         INDEX idx_jobs_title (title),
         CONSTRAINT fk_jobs_recruiter
-          FOREIGN KEY (recruiter_id) REFERENCES users(id) ON DELETE SET NULL
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+          FOREIGN KEY (recruiter_id) REFERENCES users(id)
+          ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        COLLATE=utf8mb4_unicode_ci
     `);
 
+    // Applications table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS applications (
         id INT AUTO_INCREMENT PRIMARY KEY,
         student_id INT NOT NULL,
         job_id INT NOT NULL,
-        status ENUM('Under Review', 'Shortlisted', 'Interview', 'Rejected', 'Accepted')
-          NOT NULL DEFAULT 'Under Review',
+        status ENUM(
+          'Under Review', 'Shortlisted', 'Interview',
+          'Rejected', 'Accepted'
+        ) NOT NULL DEFAULT 'Under Review',
         applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          ON UPDATE CURRENT_TIMESTAMP,
         resume VARCHAR(255) DEFAULT '',
         notes TEXT NULL,
         UNIQUE KEY unique_student_job (student_id, job_id),
@@ -119,12 +196,16 @@ const initDatabase = async () => {
         INDEX idx_app_job (job_id),
         INDEX idx_app_status (status),
         CONSTRAINT fk_app_student
-          FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (student_id) REFERENCES users(id)
+          ON DELETE CASCADE,
         CONSTRAINT fk_app_job
-          FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+          FOREIGN KEY (job_id) REFERENCES jobs(id)
+          ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        COLLATE=utf8mb4_unicode_ci
     `);
 
+    // Student profiles table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS student_profiles (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -146,12 +227,16 @@ const initDatabase = async () => {
         resume_original_name VARCHAR(255) DEFAULT '',
         profile_score INT DEFAULT 70,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          ON UPDATE CURRENT_TIMESTAMP,
         CONSTRAINT fk_student_user
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+          FOREIGN KEY (user_id) REFERENCES users(id)
+          ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        COLLATE=utf8mb4_unicode_ci
     `);
 
+    // Company profiles table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS company_profiles (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -165,17 +250,23 @@ const initDatabase = async () => {
         description TEXT,
         logo VARCHAR(50) DEFAULT 'SP',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          ON UPDATE CURRENT_TIMESTAMP,
         CONSTRAINT fk_company_user
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+          FOREIGN KEY (user_id) REFERENCES users(id)
+          ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        COLLATE=utf8mb4_unicode_ci
     `);
 
     console.log(
-      `[MySQL] Successfully connected and verified schema on '${process.env.DB_NAME}'`
+      `[MySQL] Successfully connected and verified schema on '${config.database}'`
     );
   } catch (error) {
-    console.error("[MySQL] Connection / Schema initialization error:", error.message);
+    console.error(
+      "[MySQL] Connection / Schema initialization error:",
+      error.message
+    );
     throw error;
   } finally {
     connection.release();

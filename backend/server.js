@@ -21,10 +21,36 @@ const studentRoutes = require("./routes/studentRoutes");
 const app = express();
 
 // Core Middleware
+// Configure CORS to support Vercel frontend, local development, and credentials
+const frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, "") : null;
+const allowedOrigins = [
+  frontendUrl,
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:5173",
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: "*", // Allows requests from React/Vite development server (e.g. http://localhost:5173)
+    origin: (origin, callback) => {
+      // Allow requests with no origin (curl, Postman, health monitors)
+      if (!origin) return callback(null, true);
+
+      // Match exact frontend URL, Vercel preview domains, or localhost
+      if (
+        (frontendUrl && origin === frontendUrl) ||
+        origin.endsWith(".vercel.app") ||
+        allowedOrigins.includes(origin)
+      ) {
+        return callback(null, true);
+      }
+
+      // Dynamic fallback: reflect requesting origin so custom subdomains work seamlessly
+      return callback(null, true);
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(express.json());
