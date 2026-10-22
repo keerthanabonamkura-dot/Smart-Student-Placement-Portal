@@ -28,9 +28,10 @@ const getDatabaseConfig = () => {
       port: Number(parsed.port) || 3306,
       user: decodeURIComponent(parsed.username || "root"),
       password: decodeURIComponent(parsed.password || ""),
-      database: parsed.pathname
-        ? decodeURIComponent(parsed.pathname.replace(/^\//, ""))
-        : "defaultdb",
+      database:
+        parsed.pathname && parsed.pathname !== "/"
+          ? decodeURIComponent(parsed.pathname.replace(/^\//, ""))
+          : process.env.DB_NAME || "placement_portal",
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
@@ -68,32 +69,28 @@ const getPool = () => {
 
 const initDatabase = async () => {
   const config = getDatabaseConfig();
-  const isLocalHost =
-    config.host === "127.0.0.1" ||
-    config.host === "localhost";
 
-  // Create the database automatically only for local MySQL.
-  // Cloud databases such as Aiven must already have a database.
-  if (isLocalHost && !process.env.DATABASE_URL && !process.env.MYSQL_URL) {
+  // Try to create the database automatically if supported by the provider (e.g. local MySQL, TiDB Cloud)
+  // If restricted by provider (e.g. Aiven), gracefully skip and connect to target database
+  try {
+    const initConnection = await mysql.createConnection({
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      ssl: config.ssl,
+    });
+
     try {
-      const initConnection = await mysql.createConnection({
-        host: config.host,
-        port: config.port,
-        user: config.user,
-        password: config.password,
-      });
-
-      try {
-        await initConnection.query(
-          `CREATE DATABASE IF NOT EXISTS \`${config.database}\`
-           CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-        );
-      } finally {
-        await initConnection.end();
-      }
-    } catch (createErr) {
-      console.log(`[MySQL] Note: Skipped raw CREATE DATABASE (${createErr.message})`);
+      await initConnection.query(
+        `CREATE DATABASE IF NOT EXISTS \`${config.database}\`
+         CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+      );
+    } finally {
+      await initConnection.end();
     }
+  } catch (createErr) {
+    console.log(`[MySQL] Note: Skipped raw CREATE DATABASE (${createErr.message}) - connecting directly to target database.`);
   }
 
   let connection;
