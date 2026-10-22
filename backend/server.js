@@ -6,7 +6,7 @@ const dotenv = require("dotenv");
 // Load environment variables
 dotenv.config();
 
-const { initDatabase } = require("./config/db");
+const { initDatabase, getPool } = require("./config/db");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 // Import route modules
@@ -76,13 +76,27 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    status: "healthy",
-    database: "MySQL (placement_portal)",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
+app.get("/api/health", async (req, res) => {
+  try {
+    const pool = getPool();
+    // Test live database connectivity with a lightweight ping
+    await pool.query("SELECT 1 AS health");
+
+    res.status(200).json({
+      status: "healthy",
+      database: "connected",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: "degraded",
+      database: "disconnected",
+      error: error.message,
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Mount API Routes
@@ -101,23 +115,25 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
+  // Bind to PORT immediately to pass Render health checks and avoid port scan timeouts
+  const server = app.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV || "development"} mode on http://localhost:${PORT}`);
+  });
+
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`\n[PORT CONFLICT] Port ${PORT} is already in use by another program.`);
+      console.error(`You can change PORT in backend/.env (e.g. 5001) and update frontend/src/services/api.js accordingly.\n`);
+    } else {
+      console.error("Server startup error:", err.message);
+    }
+  });
+
   try {
     await initDatabase();
-
-    const server = app.listen(PORT, () => {
-      console.log(`Server running in ${process.env.NODE_ENV || "development"} mode on http://localhost:${PORT}`);
-    });
-
-    server.on("error", (err) => {
-      if (err.code === "EADDRINUSE") {
-        console.error(`\n[PORT CONFLICT] Port ${PORT} is already in use by another program.`);
-        console.error(`You can change PORT in backend/.env (e.g. 5001) and update frontend/src/services/api.js accordingly.\n`);
-      } else {
-        console.error("Server startup error:", err.message);
-      }
-    });
   } catch (error) {
-    console.error("Failed to initialize MySQL database:", error.message);
+    console.error("Failed to initialize MySQL database on startup:", error.message);
+    console.log("Server will keep running to allow health checks and automatic DB reconnects.");
   }
 };
 

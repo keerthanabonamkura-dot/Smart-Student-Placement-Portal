@@ -67,18 +67,15 @@ const getPool = () => {
 };
 
 const initDatabase = async () => {
-  const connection = await getPool().getConnection();
+  const config = getDatabaseConfig();
+  const isLocalHost =
+    config.host === "127.0.0.1" ||
+    config.host === "localhost";
 
-  try {
-    // Create the database automatically only for local MySQL.
-    // Cloud databases such as Aiven must already have a database.
-    const config = getDatabaseConfig();
-    const isLocalHost =
-      config.host === "127.0.0.1" ||
-      config.host === "localhost";
-
-    if (isLocalHost && !process.env.DATABASE_URL &&
-        !process.env.MYSQL_URL) {
+  // Create the database automatically only for local MySQL.
+  // Cloud databases such as Aiven must already have a database.
+  if (isLocalHost && !process.env.DATABASE_URL && !process.env.MYSQL_URL) {
+    try {
       const initConnection = await mysql.createConnection({
         host: config.host,
         port: config.port,
@@ -94,7 +91,14 @@ const initDatabase = async () => {
       } finally {
         await initConnection.end();
       }
+    } catch (createErr) {
+      console.log(`[MySQL] Note: Skipped raw CREATE DATABASE (${createErr.message})`);
     }
+  }
+
+  let connection;
+  try {
+    connection = await getPool().getConnection();
 
     // Users table
     await connection.query(`
@@ -269,7 +273,9 @@ const initDatabase = async () => {
     );
     throw error;
   } finally {
-    connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
