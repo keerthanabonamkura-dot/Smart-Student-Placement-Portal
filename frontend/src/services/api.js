@@ -1,8 +1,10 @@
 import axios from "axios";
 
-// Base API URL configured via Vite environment variable or default localhost:5000
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+// Base API URL configured via Vite environment variable or default live Render backend
+const rawBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://smart-student-placement-portal.onrender.com";
+export const API_BASE_URL = rawBaseUrl.replace(/\/+$/, "").replace(/\/api$/, "");
 
 // Create Axios Instance
 const api = axios.create({
