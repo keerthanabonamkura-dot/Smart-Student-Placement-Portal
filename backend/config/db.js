@@ -140,6 +140,20 @@ const initDatabase = async () => {
       `);
     }
 
+    // Ensure initial administrator account exists
+    const [adminRows] = await connection.query(
+      "SELECT id FROM users WHERE role = 'Admin' LIMIT 1"
+    );
+    if (adminRows.length === 0) {
+      const defaultAdminPassHash =
+        "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"; // 'password123'
+      await connection.query(
+        "INSERT INTO users (name, email, password_hash, role, account_status) VALUES (?, ?, ?, 'Admin', 'active')",
+        ["Placement Administrator", "admin@smartplacement.com", defaultAdminPassHash]
+      );
+      console.log("[MySQL] Seeded initial administrator: admin@smartplacement.com");
+    }
+
     // Jobs table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS jobs (
